@@ -4,6 +4,16 @@ from PIL import Image
 import supervision as sv
 import logging
 
+class ObjectDetector(): 
+    def __init__(self, model_file_path_name):
+        self.model = YOLO(model_file_path_name)
+
+    def detect_objects_from_images(self, imge_files): 
+        images=[Image.open(f) for f in imge_files]
+        result =self.model.predict(images, verbose=False)
+        return result 
+
+
 model_dir=os.getenv('ml_model_dir')
 #player_detection_model=YOLO(os.path.join(model_dir,"yolo26-basketball-player-detection-model-test_v2_40_epochs.pt"))
 player_detection_model=YOLO(os.path.join(model_dir,"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt"))

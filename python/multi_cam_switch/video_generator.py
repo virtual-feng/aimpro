@@ -3,123 +3,274 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import shutil
-from common_utils import call_command_line
-from ml.detectors import detect_objects_on_multiple_images,analyze_result
+from common_utils import call_command_line, smooth
+from ml.detectors_v2 import ObjectDetector
 from video.synchronizer import * 
+from video.ffmpeg_wrapper import * 
+from multi_cam_switch.ffmpeg_command_generator import * 
+import pandas as pd 
 import fnmatch
-load_dotenv()
+import logging
+
+
+script_name = Path(__file__).name
+installation_dir=Path(__file__).resolve().parent.parent.parent
+load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
+
 
 video_file_ext="MP4"
 extract_fps=3
 extract_img_fmt="jpg"
 detection_chunk_size=60
+        
 
-class VideoGenerator(): 
+
+class Workspace(): 
+    def __init__(self):
+        pid=os.getpid()
+        tmp_dir=os.getenv('tmp_dir')
+        appdir=os.path.join(tmp_dir, script_name) 
+        previous_pids = os.listdir(appdir)
+        if len(previous_pids)>0: 
+            last_pid=previous_pids[0]
+            logging.info(f"resume the last job {last_pid}")
+            self.dir=os.path.join(tmp_dir, script_name, f"{last_pid}")    
+        else: 
+            self.dir=os.path.join(tmp_dir, script_name, f"{pid}")
+        Path(self.dir).mkdir(parents=True,exist_ok=True)
+
+        self.left_frames_dir=os.path.join(self.dir, 'left')
+        Path(self.left_frames_dir).mkdir(parents=True, exist_ok=True)
+        
+        self.right_frames_dir=os.path.join(self.dir, 'right')
+        Path(self.right_frames_dir).mkdir(parents=True, exist_ok=True)
+
+        logging.info(f"workspace {self.dir} created")
+
+    def remove_workspace(self):
+        shutil.rmtree(self.dir)
+        logging.info(f"workspace {self.dir} deleted")
+
     
-    def __init__(self, left_video_file,right_video_file, output_video_file):
+class VideoGenerator(): 
+    def __init__(self, left_video_file,right_video_file, output_video_file, workspace, pip=True):
         self.left_video_file=left_video_file
         self.right_video_file=right_video_file
         self.output_video_file=output_video_file
-        self.setup_workspace()
-    
-    def setup_workspace(self):
-        pid=os.getpid()
-        tmp_dir=os.getenv('tmp_dir')
-        self.workspace_dir=os.path.join(tmp_dir, f"{pid}")
-        os.mkdir(workspace_dir)
+        self.pip=pip 
+        self.workspace=workspace
+        model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
+        self.object_detector=ObjectDetector(model_path)
+        logging.info(f"loaded ml model from  {model_path} ")
+
+    def synch_left_right(self): 
+        offset, meaning = find_offset_seconds(self.workspace.dir,
+                                                  self.left_video_file, 
+                                                  self.right_video_file)
         
-    def remove_workspace(self): 
-        shutil.rmtree(self.workspace_dir)
+        logging.info(f"video offset: {offset}, {meaning}")
+        offset=round(offset)
 
-    def create_frame_dir(self):
-        self.left_frames_dir=os.path.join(self.workspace_dir, 'left')
-        Path(self.left_frames_dir).mkdir(parents=True, exist_ok=True)
-
-        self.right_frames_dir=os.path.join(self.workspace_dir, 'right')
-        Path(self.right_frames_dir).mkdir(parents=True, exist_ok=True)
-
-    def sample_frames_from_video(self): 
-        file_name_pattern=f"%d.{extract_img_fmt}"
-        output = f"{os.path.join(self.left_frames_dir, file_name_pattern)}"
-        cmd=f"ffmpeg -i {self.left_video_file} -vf  scale=1280:720,fps={extract_fps} {output}"
-        call_command_line(cmd)
-
-        output = f"{os.path.join(self.right_frames_dir, file_name_pattern)}"
-        cmd=f"ffmpeg -i {self.right_video_file} -vf  scale=1280:720,fps={extract_fps} {output}"
-        call_command_line(cmd)
-
-        def rename_frame_files(frame_dirs):
-            for fd in frame_dirs: 
-                frames = fnmatch.filter(os.listdir(fd), f"*.{extract_img_fmt}")
-                for f in frames: 
-                    parts=f.split(".")
-                    file_index, ext=int(parts[0])-1, parts[1]
-                    second, index_in_second=divmod(file_index,extract_fps)
-                    new_file_name=f"{second}-{index_in_second}.{ext}"
-                    shutil.move(os.path.join(fd,f), os.path.join(fd,new_file_name))
-        rename_frame_files([self.left_frames_dir, self.right_frames_dir])
+        left_video_duration= get_video_duration(self.left_video_file)
+        right_video_duration= get_video_duration(self.right_video_file)
+        logging.info(f"left video duration: {left_video_duration}, righ: {right_video_duration}")
+        
+        
+        if offset <0: 
+            # right start early
+            right_start=-1*offset
+            new_right_duration =  right_video_duration+offset 
+            min_duration =min(left_video_duration, new_right_duration)
+            ts=( 0, min_duration, right_start, right_start+min_duration) 
+        elif offset>0: 
+            left_start=offset 
+            new_left_duration = left_video_duration-offset
+            min_duration=min(new_left_duration, right_video_duration)
+            ts=(left_start, left_start+ min_duration, 0, min_duration)
+        return offset, tuple(format_seconds_to_hhmmss(t) for t in ts)
     
-    def detect_basketball_and_players(self ):
+    def extract_frames(self, left_start, left_end, right_start, right_end): 
+        file_name_pattern=f"%d.{extract_img_fmt}"
+        
+        left_imges = list(fnmatch.filter(os.listdir(self.workspace.left_frames_dir), f"*.{extract_img_fmt}"))
+        right_imges = list(fnmatch.filter(os.listdir(self.workspace.right_frames_dir), f"*.{extract_img_fmt}"))
+        if len(left_imges)>0 and len(right_imges)>0:
+            logging.info(f"frames already extracted")
+            return  
+        
+        ouput_path_pattern = os.path.join(self.workspace.left_frames_dir, file_name_pattern)
+        extract_frames_from_video(self.left_video_file, left_start, left_end, extract_fps, ouput_path_pattern)
+        ouput_path_pattern = os.path.join(self.workspace.right_frames_dir, file_name_pattern)
+        extract_frames_from_video(self.right_video_file, right_start, right_end, extract_fps, ouput_path_pattern)
+
+        #rename files. 
+        def rename_img_file_to_seconds_index(fd):
+            files = fnmatch.filter(os.listdir(fd), f"*.{extract_img_fmt}")
+            for f in files: 
+                parts=f.split(".")
+                file_index, ext=int(parts[0])-1, parts[1]
+                second, index_in_second=divmod(file_index,extract_fps)
+                new_file_name=f"{second}-{index_in_second}.{ext}"
+                shutil.move(os.path.join(fd,f), os.path.join(fd,new_file_name))
+        rename_img_file_to_seconds_index(self.workspace.left_frames_dir)
+        rename_img_file_to_seconds_index(self.workspace.right_frames_dir)
+
+    def detect_basketball_and_players(self): 
         def detect(video_frame_dir): 
             files=fnmatch.filter(os.listdir(video_frame_dir), f"*.{extract_img_fmt}")
             df=pd.DataFrame(data=files, columns=["file_name"])
             df['chunk']=range(df.shape[0])
-            df['chunk']=df.chunk//chunk_size
+            df['chunk']=df.chunk//detection_chunk_size
             def detect_chunk(gdf):
+                logging.info(f"object detection chuck : {gdf.name}")
                 files=[os.path.join(video_frame_dir,f) for f in gdf.file_name] 
-                results=detect_objects_on_multiple_images(files)
-                trios=[analyze_result(r) for r in results]
-                num_of_basketballs, num_of_players , num_of_possessions= zip (*trios)
-                
+                results=self.object_detector.detect_objects_from_images(files)
+                raw_oput=[ObjectDetector.analyze_result(r) for r in results]
+                num_of_basketballs, num_of_players , num_of_possessions, total_object_area= zip (*raw_oput)
                 gdf['has_baseketball']=num_of_basketballs
                 gdf['has_baseketball']=gdf.has_baseketball>0
-                
                 gdf['has_possession']=num_of_possessions
                 gdf['has_possession']=gdf.has_possession>0
-                
                 gdf['total_num_of_players']=num_of_players
+                gdf['total_object_area']=total_object_area
                 return gdf 
             ret= df.groupby('chunk').apply(detect_chunk)
             ret.sort_values(by="file_name", inplace=True)
+            ret.to_csv(os.path.join(video_frame_dir, "frame_information.csv"), index=False)
             return ret
-        df=detect(self.left_frames_dir)
-        df['video_file']=self.left_video_file
-        df.to_csv(os.path.join(self.left_frames_dir, "frame_information.csv"), index=False)
-        left_df = df 
         
-        df=detect(self.right_frames_dir)
-        df['video_file']=self.right_video_file
-        df.to_csv(os.path.join(self.right_frames_dir, "frame_information.csv"), index=False)
-        right_df=df 
+        csv_file=os.path.join(self.workspace.left_frames_dir, "frame_information.csv")
+        if os.path.exists(csv_file): 
+            left_frames_df = pd.read_csv(csv_file, index_col=None)  
+        else: 
+            left_frames_df = detect(self.workspace.left_frames_dir)
 
-        return left_df, right_df
-    def agg_prediction_df(df):
-        def extract_second_and_index(fn):
-            parts = fn.split(".")[0].split("-") 
-            return parts[0], parts[1]
-        pairs=df.file_name.apply(extract_second_and_index)
-        df['second'], df["index_within_second"]=zip (*pairs)
-        df['second'], df["index_within_second"]=df.second.astype(int), df.index_within_second.astype(int)
-        adf=df.groupby('second').agg(
+        csv_file=os.path.join(self.workspace.right_frames_dir, "frame_information.csv")
+        if os.path.exists(csv_file): 
+            right_frames_df = pd.read_csv(csv_file, index_col=None)  
+        else: 
+            right_frames_df = detect(self.workspace.right_frames_dir)
+        
+ 
+        def agg_frame_information_df(df):
+            def extract_second_and_index(fn):
+                parts = fn.split(".")[0].split("-") 
+                return parts[0], parts[1]
+            pairs=df.file_name.apply(extract_second_and_index)
+            df['second'], df["index_within_second"]=zip (*pairs)
+            df['second'], df["index_within_second"]=df.second.astype(int), df.index_within_second.astype(int)
+            adf=df.groupby('second').agg(
                 {
                     "has_baseketball":'any',
                     "total_num_of_players":'sum' ,
-                    "has_possession":'any'   
+                    "has_possession":'any', 
+                    "total_object_area":'sum'   
                 } 
-        ).reset_index()
-        adf['second_in_hhmmss']=adf.second.apply(format_seconds_to_hhmmss)
-        adf['video_file']=df.video_file.iloc[0]
-        #please sort me first !
-        adf.sort_values(by='second', inplace=True)
-        adf['global_index']=range(adf.shape[0])
-        return adf 
+            ).reset_index()
+            adf.sort_values(by='second', inplace=True)
+            return adf 
+
+        return agg_frame_information_df(left_frames_df), agg_frame_information_df(right_frames_df)
+
+    def choose_active_camera(self, left_frames_df, right_frames_df): 
+        mdf=left_frames_df.merge(right_frames_df, how='inner', on='second', suffixes=("_l","_r"))
+
+        def choose(r):
+            ball_on_left= r["has_possession_l"] or r["has_baseketball_l"]
+            ball_on_right= r["has_possession_r"] or r["has_baseketball_r"]
+
+            only_on_left=ball_on_left and not ball_on_right
+            only_on_right=ball_on_right and not ball_on_left
+
+            if only_on_left:
+                return 'left'
+            elif only_on_right: 
+                return 'right'
+            else: 
+                if r['total_num_of_players_l']>r['total_num_of_players_r']:
+                        return 'left'
+                elif r['total_num_of_players_l']<r['total_num_of_players_r']:
+                        return 'right'
+                else:
+                    if r['total_object_area_l']>r['total_object_area_r']:
+                            return 'left'
+                    elif r['total_object_area_l']<r['total_object_area_r']:
+                            return 'right'
+            return None
+
+        mdf.sort_values(by='second', ascending=True, inplace=True)
+        mdf['active_camera_raw']=mdf.apply(choose, axis=1)
+        mdf.ffill(inplace=True)
+        mdf['active_camera']=smooth(mdf.active_camera_raw)
+        mdf.to_csv(os.path.join(self.workspace.dir,'active_camera.csv'), index=False)
+        return mdf   
+
+    def extract_active_video_parts_and_concat(self, mdf, offset):
+        if self.pip: 
+            extract_cmds = gen_ffmpeg_extract_commands_with_pip(mdf, offset,self.left_video_file, self.right_video_file)
+            extract_cmds = post_process_extract_cmds_pip(extract_cmds, self.workspace.dir)
+        else: 
+            extract_cmds = gen_ffmpeg_extract_commands(mdf,offset, self.left_video_file, self.right_video_file)
+            extract_cmds = post_process_extract_cmds(extract_cmds, self.workspace.dir)
+        
+        cmd_line=f"bash {self.workspace.dir}/extract_part.sh"
+        call_command_line(cmd_line)
+
+        
+
+        if self.pip: 
+            parts=fnmatch.filter(os.listdir(self.workspace.dir),"part*.MP4")
+            pipparts =fnmatch.filter(os.listdir(self.workspace.dir), "pip*part*.MP4")
+            parts.sort(key=part_sort_key)
+            pipparts.sort(key=part_sort_key)
+            main_pip_pairs=list(zip(parts,pipparts))
+            for (p, pip) in main_pip_pairs: 
+                cmd= gen_pip_command(p, pip, self.workspace.dir )
+                call_command_line(cmd)
+            cmd = gen_concat_command(self.workspace.dir, "with_pip_part*.MP4",self.output_video_file)
+            call_command_line(cmd)
+        else: 
+            cmd = gen_concat_command(self.workspace.dir, "part*.MP4",self.output_video_file)
+            call_command_line(cmd)
+
+        
+    
+    def process(self):
+        offset, (left_start, left_end, right_start, right_end) =self.synch_left_right()
+        logging.info(f"left start={left_start} end={left_end}, right start={right_start}, end={right_end}")
+
+        self.extract_frames(left_start, left_end, right_start, right_end)
+        left_frames_df, right_frames_df=self.detect_basketball_and_players()
+        logging.info(f"left_frames_df={left_frames_df.shape}, right_frames_df={right_frames_df.shape}")
+
+        mdf = self.choose_active_camera(left_frames_df, right_frames_df)
+        logging.info(f"mdf={mdf.shape}")
+
+        self.extract_active_video_parts_and_concat(mdf, offset)
+
+
+import argparse
+def analyze_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-l', '--left_video_file')
+    parser.add_argument('-r', '--right_video_file')
+    parser.add_argument('-o', '--output_video_file')
+    parser.add_argument('-p', '--pip')
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    import argparse
     from common_utils import setup_logger
-    setup_logger('INFO')
+    log_dir=os.getenv('log_dir')
+    setup_logger('INFO', log_file=os.path.join(log_dir, f"{script_name}.log"))
 
-    workspace_dir= setup_workspace()
-    print(workspace_dir)
+    args = analyze_args()
 
-    remove_workspace(workspace_dir)
+    workspace=Workspace()
+
+    gen=VideoGenerator(args.left_video_file, args.right_video_file,args.output_video_file, workspace)
+
+    gen.process()
+
+    workspace.remove_workspace()
+
+

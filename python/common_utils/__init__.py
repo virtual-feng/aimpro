@@ -2,6 +2,7 @@ import logging
 import sys
 import datetime
 import subprocess
+import pandas as pd
 
 def setup_logger(log_level, log_file=None):
     logger=logging.getLogger()
@@ -35,6 +36,35 @@ def call_command_line(cmd_line):
         logging.error(stderr)
     logging.info(f"end run : {cmd_line}")
     return stdout, stderr
+
+def smooth(s): 
+    s_clean=s.copy()
+    
+    #detect spike of length 1. 
+    for i in range(5):
+        spike_1 = (s_clean.shift(1) == s_clean.shift(-1)) & (s_clean != s_clean.shift(1))
+
+        if spike_1.astype(int).sum()==0: 
+            return s_clean
+
+        logging.info(f"smooth attemp: {i}")
+        s_clean=s_clean.where(~spike_1, s_clean.shift(1))
+
+        #detect the spike of length 2, 
+        spike_2_left = ((s_clean == s_clean.shift(-1)) & (s_clean != s_clean.shift(1))& (s_clean != s_clean.shift(-2)))
+        spike_2_right = ((s_clean == s_clean.shift(1)) & (s_clean != s_clean.shift(-1)) & (s_clean != s_clean.shift(2)))
+        
+        s_clean = s_clean.where(~spike_2_left, s_clean.shift(1))
+        s_clean = s_clean.where(~spike_2_right, s_clean.shift(1))
+
+        #make sure head and tail are NOT spike. 
+        if s_clean.size >3: 
+            s_clean.iloc[0]=s_clean.iloc[1]
+            s_clean.iloc[-1]=s_clean.iloc[-2]
+    return s_clean 
+            
+        
+
 
 if __name__ == "__main__":
     import argparse
