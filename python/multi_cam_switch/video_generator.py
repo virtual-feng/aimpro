@@ -17,7 +17,7 @@ script_name = Path(__file__).name
 installation_dir=Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
 
-
+video_fps=60
 video_file_ext="MP4"
 extract_fps=3
 extract_img_fmt="jpg"
@@ -30,6 +30,7 @@ class Workspace():
         pid=os.getpid()
         tmp_dir=os.getenv('tmp_dir')
         appdir=os.path.join(tmp_dir, script_name) 
+        Path(appdir).mkdir(parents=True,exist_ok=True)
         previous_pids = os.listdir(appdir)
         if len(previous_pids)>0: 
             last_pid=previous_pids[0]
@@ -62,6 +63,18 @@ class VideoGenerator():
         model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
         self.object_detector=ObjectDetector(model_path)
         logging.info(f"loaded ml model from  {model_path} ")
+    
+    def copy_source_to_workspace(self): 
+        old_file_path_name=self.left_video_file
+        _,file=os.path.split(self.left_video_file)
+        self.left_video_file=os.path.join(self.workspace.dir, file)
+        shutil.copy(old_file_path_name, self.left_video_file)
+        
+        old_file_path_name=self.right_video_file
+        _,file=os.path.split(self.right_video_file)
+        self.right_video_file=os.path.join(self.workspace.dir, file)
+        shutil.copy(old_file_path_name, self.right_video_file)
+        
 
     def synch_left_right(self): 
         offset, meaning = find_offset_seconds(self.workspace.dir,
@@ -116,7 +129,7 @@ class VideoGenerator():
         rename_img_file_to_seconds_index(self.workspace.right_frames_dir)
 
     def detect_basketball_and_players(self): 
-        def detect(video_frame_dir): 
+        def detect(video_frame_dir, csv_file_path_name): 
             files=fnmatch.filter(os.listdir(video_frame_dir), f"*.{extract_img_fmt}")
             df=pd.DataFrame(data=files, columns=["file_name"])
             df['chunk']=range(df.shape[0])
@@ -136,20 +149,21 @@ class VideoGenerator():
                 return gdf 
             ret= df.groupby('chunk').apply(detect_chunk)
             ret.sort_values(by="file_name", inplace=True)
-            ret.to_csv(os.path.join(video_frame_dir, "frame_information.csv"), index=False)
+            #ret.to_csv(os.path.join(video_frame_dir, "frame_information.csv"), index=False)
+            ret.to_csv(csv_file_path_name)
             return ret
         
-        csv_file=os.path.join(self.workspace.left_frames_dir, "frame_information.csv")
+        csv_file=os.path.join(self.workspace.dir,"left_frame_information.csv")
         if os.path.exists(csv_file): 
             left_frames_df = pd.read_csv(csv_file, index_col=None)  
         else: 
-            left_frames_df = detect(self.workspace.left_frames_dir)
-
-        csv_file=os.path.join(self.workspace.right_frames_dir, "frame_information.csv")
+            left_frames_df = detect(self.workspace.left_frames_dir, csv_file)
+        
+        csv_file=os.path.join(self.workspace.dir, "right_frame_information.csv")
         if os.path.exists(csv_file): 
             right_frames_df = pd.read_csv(csv_file, index_col=None)  
         else: 
-            right_frames_df = detect(self.workspace.right_frames_dir)
+            right_frames_df = detect(self.workspace.right_frames_dir, csv_file)
         
  
         def agg_frame_information_df(df):
@@ -172,31 +186,43 @@ class VideoGenerator():
 
         return agg_frame_information_df(left_frames_df), agg_frame_information_df(right_frames_df)
 
+
     def choose_active_camera(self, left_frames_df, right_frames_df): 
         mdf=left_frames_df.merge(right_frames_df, how='inner', on='second', suffixes=("_l","_r"))
 
         def choose(r):
-            ball_on_left= r["has_possession_l"] or r["has_baseketball_l"]
-            ball_on_right= r["has_possession_r"] or r["has_baseketball_r"]
-
-            only_on_left=ball_on_left and not ball_on_right
-            only_on_right=ball_on_right and not ball_on_left
-
-            if only_on_left:
+            if r['total_num_of_players_l']>r['total_num_of_players_r']:
                 return 'left'
-            elif only_on_right: 
+            elif r['total_num_of_players_l']<r['total_num_of_players_r']:
                 return 'right'
-            else: 
-                if r['total_num_of_players_l']>r['total_num_of_players_r']:
-                        return 'left'
-                elif r['total_num_of_players_l']<r['total_num_of_players_r']:
-                        return 'right'
-                else:
-                    if r['total_object_area_l']>r['total_object_area_r']:
-                            return 'left'
-                    elif r['total_object_area_l']<r['total_object_area_r']:
-                            return 'right'
+            else:
+                if r['total_object_area_l']>r['total_object_area_r']:
+                    return 'left'
+                elif r['total_object_area_l']<r['total_object_area_r']:
+                    return 'right'
             return None
+
+            # ball_on_left= r["has_possession_l"] or r["has_baseketball_l"]
+            # ball_on_right= r["has_possession_r"] or r["has_baseketball_r"]
+
+            # only_on_left=ball_on_left and not ball_on_right
+            # only_on_right=ball_on_right and not ball_on_left
+
+            # if only_on_left:
+            #     return 'left'
+            # elif only_on_right: 
+            #     return 'right'
+            # else: 
+            #     if r['total_num_of_players_l']>r['total_num_of_players_r']:
+            #             return 'left'
+            #     elif r['total_num_of_players_l']<r['total_num_of_players_r']:
+            #             return 'right'
+            #     else:
+            #         if r['total_object_area_l']>r['total_object_area_r']:
+            #                 return 'left'
+            #         elif r['total_object_area_l']<r['total_object_area_r']:
+            #                 return 'right'
+            # return None
 
         mdf.sort_values(by='second', ascending=True, inplace=True)
         mdf['active_camera_raw']=mdf.apply(choose, axis=1)
@@ -217,7 +243,7 @@ class VideoGenerator():
         call_command_line(cmd_line)
 
         
-
+        tmp_output_vid_file=os.path.join(self.workspace.dir,"temp_output.MP4")
         if self.pip: 
             parts=fnmatch.filter(os.listdir(self.workspace.dir),"part*.MP4")
             pipparts =fnmatch.filter(os.listdir(self.workspace.dir), "pip*part*.MP4")
@@ -227,15 +253,21 @@ class VideoGenerator():
             for (p, pip) in main_pip_pairs: 
                 cmd= gen_pip_command(p, pip, self.workspace.dir )
                 call_command_line(cmd)
-            cmd = gen_concat_command(self.workspace.dir, "with_pip_part*.MP4",self.output_video_file)
+
+            cmd = gen_concat_command(self.workspace.dir, "with_pip_part*.MP4",tmp_output_vid_file)
             call_command_line(cmd)
         else: 
-            cmd = gen_concat_command(self.workspace.dir, "part*.MP4",self.output_video_file)
+            cmd = gen_concat_command(self.workspace.dir, "part*.MP4",tmp_output_vid_file)
             call_command_line(cmd)
-
-        
+        return tmp_output_vid_file
     
+    def to_h265(self, tmp_output_vid_file):
+        # cmd = gen_h265_encoding_cmd(tmp_output_vid_file, self.output_video_file)
+        # call_command_line(cmd)
+        shutil.copy(tmp_output_vid_file, self.output_video_file)
     def process(self):
+        self.copy_source_to_workspace()
+        
         offset, (left_start, left_end, right_start, right_end) =self.synch_left_right()
         logging.info(f"left start={left_start} end={left_end}, right start={right_start}, end={right_end}")
 
@@ -246,8 +278,15 @@ class VideoGenerator():
         mdf = self.choose_active_camera(left_frames_df, right_frames_df)
         logging.info(f"mdf={mdf.shape}")
 
-        self.extract_active_video_parts_and_concat(mdf, offset)
+        tmp_output_vid_file=self.extract_active_video_parts_and_concat(mdf, offset)
 
+        #free up some diskspace. 
+        for file in Path(self.workspace.dir).glob("*part*.MP4"):
+            os.remove(file)
+        os.remove(self.left_video_file)
+        os.remove(self.right_video_file)
+
+        self.to_h265(tmp_output_vid_file)
 
 import argparse
 def analyze_args():
@@ -255,22 +294,28 @@ def analyze_args():
     parser.add_argument('-l', '--left_video_file')
     parser.add_argument('-r', '--right_video_file')
     parser.add_argument('-o', '--output_video_file')
-    parser.add_argument('-p', '--pip')
+    parser.add_argument('-p', '--pip', choices=['Y', 'N'], default="Y")
     return parser.parse_args()
 
 if __name__ == "__main__":
     from common_utils import setup_logger
+    from datetime import datetime
     log_dir=os.getenv('log_dir')
     setup_logger('INFO', log_file=os.path.join(log_dir, f"{script_name}.log"))
-
     args = analyze_args()
-
+    
     workspace=Workspace()
+    try:
+        start_time=datetime.now()
+        gen=VideoGenerator(args.left_video_file, args.right_video_file,args.output_video_file, workspace, pip=(args.pip.upper()=='Y'))
+        gen.process()
+        end_time=datetime.now()
+        delta = (end_time-start_time).total_seconds()
+        delta_in_minutes, reminding_seconds = int(delta//60), int(delta%60) 
+        print(f"it took {delta_in_minutes} minutes and {reminding_seconds} seconds to produce {args.output_video_file}. ")
 
-    gen=VideoGenerator(args.left_video_file, args.right_video_file,args.output_video_file, workspace)
-
-    gen.process()
-
-    workspace.remove_workspace()
+        # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
+    finally:
+        workspace.remove_workspace()
 
 
