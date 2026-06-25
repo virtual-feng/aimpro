@@ -13,7 +13,7 @@ def gen_hhmmss(side, offset, second):
             second =float(second) +offset
     return format_seconds_to_hhmmss(second) 
 
-def gen_ffmpeg_extract_commands(mdf, offset, left_video_file, right_video_file, fps=60):
+def gen_ffmpeg_extract_commands(mdf, offset, left_video_file, right_video_file, fps=60, logo_file_path_name=None ):
     def gen_cmd(start_r,last_r): 
         if start_r.active_camera=='left':
             start_hhmmss=gen_hhmmss("left", offset, start_r.second)
@@ -24,7 +24,11 @@ def gen_ffmpeg_extract_commands(mdf, offset, left_video_file, right_video_file, 
             to_hhmmss=gen_hhmmss("right", offset, last_r.second)
             video_file_name=right_video_file
         #cmd1 = f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name}  -c copy part_to_be_replaced"
-        cmd1 =f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name} -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac part_to_be_replaced"
+        watermark=""
+        if logo_file_path_name: 
+            watermark=f' -i {logo_file_path_name} -filter_complex "[1:v]scale=iw*0.25:-1[watermark];[0:v][watermark]overlay=10:main_h-overlay_h-10" '
+
+        cmd1 =f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name}  {watermark} -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac part_to_be_replaced"
 
         return cmd1
     
@@ -46,7 +50,7 @@ def gen_ffmpeg_extract_commands(mdf, offset, left_video_file, right_video_file, 
         cmds.append(gen_cmd(start_r,last_r))       
     return cmds 
 
-def gen_ffmpeg_extract_commands_with_pip(mdf,offset,left_video_file, right_video_file, fps=60):
+def gen_ffmpeg_extract_commands_with_pip(mdf,offset,left_video_file, right_video_file, fps=60, logo_file_path_name=None):
     def gen_cmd(start_r,last_r): 
         
         if start_r.active_camera=='left':
@@ -68,8 +72,14 @@ def gen_ffmpeg_extract_commands_with_pip(mdf,offset,left_video_file, right_video
             
         # cmd1 = f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name}  -c copy part_to_be_replaced"
         # cmd2 = f"ffmpeg -ss {pip_start_hhmmss} -to {pip_to_hhmmss} -i {pip_video_file_name}  -c copy {start_r.active_camera}-part_to_be_replaced" 
-        cmd1 = f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name} -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac part_to_be_replaced"
-        cmd2 = f"ffmpeg -ss {pip_start_hhmmss} -to {pip_to_hhmmss} -i {pip_video_file_name}  -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac {start_r.active_camera}-part_to_be_replaced" 
+        watermark=""
+        if logo_file_path_name: 
+            watermark=f' -i {logo_file_path_name} -filter_complex "[1:v]scale=iw*0.25:-1[watermark];[0:v][watermark]overlay=10:main_h-overlay_h-10" '
+        #ffmpeg -ss 00:01:30 -to 00:02:45 -i input.mp4 -i watermark.png -filter_complex "[1:v]scale=main_w*0.15:-1[watermark];[0:v][watermark]overlay=main_w-overlay_w-10:10" -c:v libx264 -crf 23 -c:a aac output.mp4
+
+
+        cmd1 = f"ffmpeg -ss {start_hhmmss} -to {to_hhmmss} -i {video_file_name}  {watermark} -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac part_to_be_replaced"
+        cmd2 = f"ffmpeg -ss {pip_start_hhmmss} -to {pip_to_hhmmss} -i {pip_video_file_name} {watermark} -r {fps} -vsync cfr -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac {start_r.active_camera}-part_to_be_replaced" 
         return (cmd1,cmd2)
     
     start_r, last_r=None, None  

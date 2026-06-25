@@ -15,6 +15,7 @@ import logging
 
 script_name = Path(__file__).name
 installation_dir=Path(__file__).resolve().parent.parent.parent
+resource_dir=os.path.join(installation_dir, 'resources')
 load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
 
 video_fps=60
@@ -235,11 +236,12 @@ class VideoGenerator():
         return mdf   
 
     def extract_active_video_parts_and_concat(self, mdf, offset):
+        logo_file_path_name=os.path.join(resource_dir, "your-court-vision-light-blue.png")
         if self.pip: 
-            extract_cmds = gen_ffmpeg_extract_commands_with_pip(mdf, offset,self.left_video_file, self.right_video_file)
+            extract_cmds = gen_ffmpeg_extract_commands_with_pip(mdf, offset,self.left_video_file, self.right_video_file, fps=60, logo_file_path_name=logo_file_path_name)
             extract_cmds = post_process_extract_cmds_pip(extract_cmds, self.workspace.dir)
         else: 
-            extract_cmds = gen_ffmpeg_extract_commands(mdf,offset, self.left_video_file, self.right_video_file)
+            extract_cmds = gen_ffmpeg_extract_commands(mdf,offset, self.left_video_file, self.right_video_file,fps=60, logo_file_path_name=logo_file_path_name)
             extract_cmds = post_process_extract_cmds(extract_cmds, self.workspace.dir)
         
         cmd_line=f"bash {self.workspace.dir}/extract_part.sh"
@@ -323,6 +325,6 @@ if __name__ == "__main__":
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
         pass 
-        #workspace.remove_workspace()
+        #orkspace.remove_workspace()
 
 
