@@ -5,11 +5,15 @@ import supervision as sv
 import logging
 
 class ObjectDetector(): 
+    #default_imgsz=1280
+
     def __init__(self, model_file_path_name):
         self.model = YOLO(model_file_path_name)
 
     def detect_objects_from_images(self, imge_files): 
         images=[Image.open(f) for f in imge_files]
+        # increase the image size doesn't seem to help to increase the accurycy. Good footage is still the key. 
+        #result =self.model.predict(images, imgsz = ObjectDetector.default_imgsz, verbose=False)
         result =self.model.predict(images, verbose=False)
         return result 
     @staticmethod

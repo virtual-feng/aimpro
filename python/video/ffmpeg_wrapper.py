@@ -4,6 +4,8 @@ from common_utils import call_command_line
 import logging
 import os
 import json
+import shutil
+import math 
 
 def extract_audio(vid_file, output_file):
     cmd_line=f'ffmpeg   -i {vid_file} -b:a 192K -vn  -ac 1 -y  {output_file}'
@@ -20,8 +22,8 @@ def get_video_duration(vid_file):
         return None 
     return float(stdout)
 
-def extract_frames_from_video(vid_file, start, end, extract_fps, ouput_path_pattern): 
-    cmd=f"ffmpeg -ss {start} -to {end} -i {vid_file} -vf scale=1280:720,fps={extract_fps} {ouput_path_pattern}"
+def extract_frames_from_video(vid_file, start, end, extract_fps, ouput_path_pattern, image_size="1280:720"): 
+    cmd=f"ffmpeg -ss {start} -to {end} -i {vid_file} -vf scale={image_size},fps={extract_fps} {ouput_path_pattern}"
     stdout, stderr = call_command_line(cmd)
     logging.info(stdout[:2])
     
@@ -99,6 +101,45 @@ def normalize_video_pair(v1, v2, v1_out, v2_out):
         file_produced.append(v2_out)
     return file_produced
 
+def add_subtitle(vid_file, start_seconds, end_seconds, text, workspace_dir):
+    pass 
+    # def format_seconds_to_hhmmss(seconds):
+    #     #seconds is float number, it might have decimal part. 
+    #     seconds =int(seconds)
+    #     decimal_part, integer_part = math.modf(seconds)
+    #     ms, seconds = int(decimal_part*1000), int(integer_part) 
+    #     hours, remainder = divmod(seconds, 3600)
+    #     minutes, seconds = divmod(remainder, 60)
+    #     ret =  f"{hours:02}:{minutes:02}:{seconds:02}"
+    #     if decimal_part>0: 
+    #         ret =f"{ret},{ms:03}"
+    #     return ret 
+
+
+    # text="Stared by Venom U16-2 boys. <br/> Produced by @YourCourtVision. "
+    # start_seconds, end_seconds = format_seconds_to_hhmmss(start_seconds), format_seconds_to_hhmmss(end_seconds)
+    # #start_seconds, end_seconds = start_seconds.replace(".",","), end_seconds.replace(".",",")
+    # srt_file = os.path.join(workspace_dir, "temp_srt.srt")
+    # lines=f"""
+    # text
+    # 1
+    # {start_seconds} --> {end_seconds}
+    # {text}
+    # """.splitlines()
+    # lines=[l.strip() for l in lines]
+    # lines=[l for l in lines if len(l)>0]
+    # with open(srt_file, "w") as h: 
+    #     h.write("\n".join(lines))    
+
+    # temp_output_file= os.path.join(workspace_dir, "temp_video.MP4")
+    # cmd=f'ffmpeg -i {vid_file} -vf "subtitles={srt_file}" {temp_output_file}'
+    # call_command_line(cmd)
+
+    # shutil.copy(temp_output_file, vid_file)
+    # os.remove(srt_file)
+    # os.remove(temp_output_file)
+
+
 
 import argparse
 def analyze_args():
@@ -116,6 +157,16 @@ def analyze_args():
     parser_normalize_pair = subparsers.add_parser("norm_pair", help="normalize")
     parser_normalize_pair.add_argument("-l", "--left_file" , help="the vid file ")
     parser_normalize_pair.add_argument("-r", "--right_file" , help="the vid file ")
+
+    subtitle_normalize = subparsers.add_parser("subtitle", help="normalize")
+    subtitle_normalize.add_argument("-i", "--input_file" , help="the vid file ")
+    subtitle_normalize.add_argument("-s", "--start_seconds" , help="the vid file ")
+    subtitle_normalize.add_argument("-e", "--end_seconds" , help="the vid file ")
+    #subtitle_normalize.add_argument("-t", "--text" , help="the vid file ")
+    
+    
+    
+    
     
     return parser.parse_args()
 
@@ -151,6 +202,9 @@ if __name__ == "__main__":
             print(f"following video files have been created:")
             for f in file_produced: 
                 print(f)
+    elif args.command =='subtitle': 
+        workspace_dir=os.getcwd()
+        add_subtitle(args.input_file, args.start_seconds, args.end_seconds, 'bla', workspace_dir)
 
     else : 
         pass 

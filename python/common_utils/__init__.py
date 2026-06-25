@@ -57,6 +57,10 @@ def smooth(s):
         s_clean = s_clean.where(~spike_2_left, s_clean.shift(1))
         s_clean = s_clean.where(~spike_2_right, s_clean.shift(1))
 
+        #looks like the switching always a bit late. 
+        #let me just do a shift, to see how it goes. 
+        #s_clean=s_clean.shift(-1)
+
         #make sure head and tail are NOT spike. 
         if s_clean.size >3: 
             s_clean.iloc[0]=s_clean.iloc[1]

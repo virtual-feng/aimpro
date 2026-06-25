@@ -19,6 +19,7 @@ def format_seconds_to_hhmmss(seconds):
     return ret 
 
 
+
 def find_offset_seconds(workspace_dir,v_a, v_b, sample_rate=16000):
     video_a_name, video_b_name=os.path.split(v_a)[-1], os.path.split(v_b)[-1]
     audio_a_temp_file=os.path.join(workspace_dir, f"{video_a_name}.mp3")

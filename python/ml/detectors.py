@@ -19,7 +19,7 @@ model_dir=os.getenv('ml_model_dir')
 player_detection_model=YOLO(os.path.join(model_dir,"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt"))
 def detect_objects_on_multiple_images(files):
     images=[Image.open(f) for f in files]
-    result =player_detection_model.predict(images, verbose=False)
+    result =player_detection_model.predict(images, imgsz=1280, verbose=False)
     return result 
 
 def annotate(image: Image.Image, result ) -> Image.Image:

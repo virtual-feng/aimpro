@@ -82,7 +82,7 @@ class VideoGenerator():
                                                   self.right_video_file)
         
         logging.info(f"video offset: {offset}, {meaning}")
-        offset=round(offset)
+        #offset=round(offset)
 
         left_video_duration= get_video_duration(self.left_video_file)
         right_video_duration= get_video_duration(self.right_video_file)
@@ -228,6 +228,9 @@ class VideoGenerator():
         mdf['active_camera_raw']=mdf.apply(choose, axis=1)
         mdf.ffill(inplace=True)
         mdf['active_camera']=smooth(mdf.active_camera_raw)
+
+        
+
         mdf.to_csv(os.path.join(self.workspace.dir,'active_camera.csv'), index=False)
         return mdf   
 
@@ -261,10 +264,13 @@ class VideoGenerator():
             call_command_line(cmd)
         return tmp_output_vid_file
     
+    
     def to_h265(self, tmp_output_vid_file):
         # cmd = gen_h265_encoding_cmd(tmp_output_vid_file, self.output_video_file)
         # call_command_line(cmd)
         shutil.copy(tmp_output_vid_file, self.output_video_file)
+
+        
     def process(self):
         self.copy_source_to_workspace()
         
@@ -316,6 +322,7 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        workspace.remove_workspace()
+        pass 
+        #workspace.remove_workspace()
 
 
