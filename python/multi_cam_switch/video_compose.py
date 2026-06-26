@@ -18,14 +18,6 @@ installation_dir=Path(__file__).resolve().parent.parent.parent
 resource_dir=os.path.join(installation_dir, 'resources')
 load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
 
-video_fps=60
-video_file_ext="MP4"
-extract_fps=3
-extract_img_fmt="jpg"
-detection_chunk_size=60
-        
-
-
 class Workspace(): 
     def __init__(self):
         pid=os.getpid()
@@ -47,36 +39,28 @@ class Workspace():
         self.right_frames_dir=os.path.join(self.dir, 'right')
         Path(self.right_frames_dir).mkdir(parents=True, exist_ok=True)
 
+        #finally , copy logo. 
+        logo_file_path_name=os.path.join(resource_dir, "your-court-vision-light-blue.png")
+        self.logo_file_path_name=os.path.join(self.dir, "your-court-vision.png")
+        shutil.copy(logo_file_path_name, self.logo_file_path_name)
         logging.info(f"workspace {self.dir} created")
 
     def remove_workspace(self):
         shutil.rmtree(self.dir)
         logging.info(f"workspace {self.dir} deleted")
 
-    
-class VideoGenerator(): 
-    def __init__(self, left_video_file,right_video_file, output_video_file, workspace, pip=True):
+extract_fps=3
+extract_img_fmt="jpg"
+detection_chunk_size=60
+class ClipPicker(): 
+    def __init__(self, left_video_file,right_video_file,workspace):
         self.left_video_file=left_video_file
         self.right_video_file=right_video_file
-        self.output_video_file=output_video_file
-        self.pip=pip 
         self.workspace=workspace
         model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
         self.object_detector=ObjectDetector(model_path)
         logging.info(f"loaded ml model from  {model_path} ")
     
-    def copy_source_to_workspace(self): 
-        old_file_path_name=self.left_video_file
-        _,file=os.path.split(self.left_video_file)
-        self.left_video_file=os.path.join(self.workspace.dir, file)
-        shutil.copy(old_file_path_name, self.left_video_file)
-        
-        old_file_path_name=self.right_video_file
-        _,file=os.path.split(self.right_video_file)
-        self.right_video_file=os.path.join(self.workspace.dir, file)
-        shutil.copy(old_file_path_name, self.right_video_file)
-        
-
     def synch_left_right(self): 
         offset, meaning = find_offset_seconds(self.workspace.dir,
                                                   self.left_video_file, 
@@ -202,99 +186,77 @@ class VideoGenerator():
                 elif r['total_object_area_l']<r['total_object_area_r']:
                     return 'right'
             return None
-
-            # ball_on_left= r["has_possession_l"] or r["has_baseketball_l"]
-            # ball_on_right= r["has_possession_r"] or r["has_baseketball_r"]
-
-            # only_on_left=ball_on_left and not ball_on_right
-            # only_on_right=ball_on_right and not ball_on_left
-
-            # if only_on_left:
-            #     return 'left'
-            # elif only_on_right: 
-            #     return 'right'
-            # else: 
-            #     if r['total_num_of_players_l']>r['total_num_of_players_r']:
-            #             return 'left'
-            #     elif r['total_num_of_players_l']<r['total_num_of_players_r']:
-            #             return 'right'
-            #     else:
-            #         if r['total_object_area_l']>r['total_object_area_r']:
-            #                 return 'left'
-            #         elif r['total_object_area_l']<r['total_object_area_r']:
-            #                 return 'right'
-            # return None
-
         mdf.sort_values(by='second', ascending=True, inplace=True)
         mdf['active_camera_raw']=mdf.apply(choose, axis=1)
         mdf.ffill(inplace=True)
         mdf['active_camera']=smooth(mdf.active_camera_raw)
-
-        
-
         mdf.to_csv(os.path.join(self.workspace.dir,'active_camera.csv'), index=False)
         return mdf   
-
-    def extract_active_video_parts_and_concat(self, mdf, offset):
-        logo_file_path_name=os.path.join(resource_dir, "your-court-vision-light-blue.png")
-        if self.pip: 
-            extract_cmds = gen_ffmpeg_extract_commands_with_pip(mdf, offset,self.left_video_file, self.right_video_file, fps=60, logo_file_path_name=logo_file_path_name)
-            extract_cmds = post_process_extract_cmds_pip(extract_cmds, self.workspace.dir)
-        else: 
-            extract_cmds = gen_ffmpeg_extract_commands(mdf,offset, self.left_video_file, self.right_video_file,fps=60, logo_file_path_name=logo_file_path_name)
-            extract_cmds = post_process_extract_cmds(extract_cmds, self.workspace.dir)
-        
-        cmd_line=f"bash {self.workspace.dir}/extract_part.sh"
-        call_command_line(cmd_line)
-
-        
-        tmp_output_vid_file=os.path.join(self.workspace.dir,"temp_output.MP4")
-        if self.pip: 
-            parts=fnmatch.filter(os.listdir(self.workspace.dir),"part*.MP4")
-            pipparts =fnmatch.filter(os.listdir(self.workspace.dir), "pip*part*.MP4")
-            parts.sort(key=part_sort_key)
-            pipparts.sort(key=part_sort_key)
-            main_pip_pairs=list(zip(parts,pipparts))
-            for (p, pip) in main_pip_pairs: 
-                cmd= gen_pip_command(p, pip, self.workspace.dir )
-                call_command_line(cmd)
-
-            cmd = gen_concat_command(self.workspace.dir, "with_pip_part*.MP4",tmp_output_vid_file)
-            call_command_line(cmd)
-        else: 
-            cmd = gen_concat_command(self.workspace.dir, "part*.MP4",tmp_output_vid_file)
-            call_command_line(cmd)
-        return tmp_output_vid_file
     
-    
-    def to_h265(self, tmp_output_vid_file):
-        # cmd = gen_h265_encoding_cmd(tmp_output_vid_file, self.output_video_file)
-        # call_command_line(cmd)
-        shutil.copy(tmp_output_vid_file, self.output_video_file)
-
-        
-    def process(self):
-        self.copy_source_to_workspace()
-        
+    def pick(self): 
         offset, (left_start, left_end, right_start, right_end) =self.synch_left_right()
-        logging.info(f"left start={left_start} end={left_end}, right start={right_start}, end={right_end}")
-
         self.extract_frames(left_start, left_end, right_start, right_end)
         left_frames_df, right_frames_df=self.detect_basketball_and_players()
         logging.info(f"left_frames_df={left_frames_df.shape}, right_frames_df={right_frames_df.shape}")
+        return self.choose_active_camera(left_frames_df, right_frames_df), offset 
 
-        mdf = self.choose_active_camera(left_frames_df, right_frames_df)
-        logging.info(f"mdf={mdf.shape}")
 
-        tmp_output_vid_file=self.extract_active_video_parts_and_concat(mdf, offset)
+video_fps=60
+class VideoComposer(): 
+    def __init__(self, left_video_file,right_video_file, output_video_file, workspace, pip=True, watermark=True):
+        self.left_video_file=left_video_file
+        self.right_video_file=right_video_file
+        self.output_video_file=output_video_file
+        self.pip=pip 
+        self.watermark=watermark
+        self.workspace=workspace
+        model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
+        self.object_detector=ObjectDetector(model_path)
+        logging.info(f"loaded ml model from  {model_path} ")
+    
+    def copy_source_to_workspace(self): 
+        old_file_path_name=self.left_video_file
+        _,file=os.path.split(self.left_video_file)
+        self.left_video_file=os.path.join(self.workspace.dir, file)
+        shutil.copy(old_file_path_name, self.left_video_file)
+        
+        old_file_path_name=self.right_video_file
+        _,file=os.path.split(self.right_video_file)
+        self.right_video_file=os.path.join(self.workspace.dir, file)
+        shutil.copy(old_file_path_name, self.right_video_file)
+    
 
-        #free up some diskspace. 
-        for file in Path(self.workspace.dir).glob("*part*.MP4"):
-            os.remove(file)
-        os.remove(self.left_video_file)
-        os.remove(self.right_video_file)
+    def cut_and_compose(self):
+        if self.watermark: 
+            logo_file_path_name=self.workspace.logo_file_path_name
+        else: 
+            logo_file_path_name=None 
 
-        self.to_h265(tmp_output_vid_file)
+        picker=ClipPicker(self.left_video_file,self.right_video_file, self.workspace)
+        mdf , offset= picker.pick()
+        
+        cmds = gen_cmds_from_ac_df(mdf, 
+                                   offset, 
+                                   self.left_video_file, 
+                                   self.right_video_file, 
+                                   output_fps=video_fps, 
+                                   logo_file_path_name=logo_file_path_name, 
+                                   pip=self.pip )
+        post_process_extract_cmds(cmds, self.workspace.dir)
+        cmd_line=f"bash {self.workspace.dir}/extract_part.sh"
+        call_command_line(cmd_line)
+        
+        tmp_output_vid_file=os.path.join(self.workspace.dir,"temp_output.MP4")
+        cmd = gen_concat_command(self.workspace.dir, "part*.MP4",tmp_output_vid_file)
+        call_command_line(cmd)
+        
+        return tmp_output_vid_file
+    
+    def process(self):
+        self.copy_source_to_workspace()
+        tmp_output_vid_file=self.cut_and_compose()
+        shutil.copy(tmp_output_vid_file, self.output_video_file)
+
 
 import argparse
 def analyze_args():
@@ -303,6 +265,8 @@ def analyze_args():
     parser.add_argument('-r', '--right_video_file')
     parser.add_argument('-o', '--output_video_file')
     parser.add_argument('-p', '--pip', choices=['Y', 'N'], default="Y")
+    parser.add_argument('-w', '--watermark', choices=['Y', 'N'], default="Y")
+    
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -315,7 +279,7 @@ if __name__ == "__main__":
     workspace=Workspace()
     try:
         start_time=datetime.now()
-        gen=VideoGenerator(args.left_video_file, args.right_video_file,args.output_video_file, workspace, pip=(args.pip.upper()=='Y'))
+        gen=VideoComposer(args.left_video_file, args.right_video_file,args.output_video_file, workspace, pip=(args.pip.upper()=='Y'), watermark=(args.watermark.upper()=='Y'))
         gen.process()
         end_time=datetime.now()
         delta = (end_time-start_time).total_seconds()
@@ -324,7 +288,6 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        pass 
-        #orkspace.remove_workspace()
+        workspace.remove_workspace()
 
 

@@ -59,7 +59,7 @@ def smooth(s):
 
         #looks like the switching always a bit late. 
         #let me just do a shift, to see how it goes. 
-        #s_clean=s_clean.shift(-1)
+        s_clean=s_clean.shift(-1)
 
         #make sure head and tail are NOT spike. 
         if s_clean.size >3: 
