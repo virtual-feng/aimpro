@@ -3,6 +3,7 @@ import sys
 import datetime
 import subprocess
 import pandas as pd
+import os 
 
 def setup_logger(log_level, log_file=None):
     logger=logging.getLogger()
@@ -13,7 +14,10 @@ def setup_logger(log_level, log_file=None):
     f=logging.Formatter('%(asctime)s\t%(name)s\t %(levelname)s\t%(module)s\t%(funcName)s\t%(message)s')
     
     h=logging.StreamHandler(sys.stdout)
-    if log_file: 
+    if log_file:
+        path, file_name=os.path.split(log_file)
+        if not os.path.exists(path):
+            os.makedirs(path) 
         h=logging.FileHandler(log_file, encoding='utf-8')
 
     h.setFormatter(f)

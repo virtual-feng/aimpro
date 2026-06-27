@@ -6,6 +6,7 @@ import os
 import json
 import shutil
 import math 
+from pathlib import Path
 
 def extract_audio(vid_file, output_file):
     cmd_line=f'ffmpeg   -i {vid_file} -b:a 192K -vn  -ac 1 -y  {output_file}'
@@ -28,7 +29,7 @@ def extract_frames_from_video(vid_file, start, end, extract_fps, ouput_path_patt
     logging.info(stdout[:2])
     
 def extract_video_infor(vid_file): 
-    cmd=f"ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate,r_frame_rate,codec_name,pix_fmt,width,height -of json {vid_file}"
+    cmd=f"ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate,avg_frame_rate,r_frame_rate,codec_name,pix_fmt,width,height -of json {vid_file}"
     stdout, stderr= call_command_line(cmd)
     if stderr:
         return None 
@@ -56,12 +57,25 @@ def normalize_video(vid_file, output_file):
     a_info= extract_audio_sample_rate(vid_file)
     logging.info(v_info)
     need_normalize= v_info.get('width')!=width or v_info.get('height')!=height or  v_info.get("codec_name")!=codec or   v_info.get("avg_frame_rate")!=fps or v_info.get("r_frame_rate")!=fps or v_info.get('pix_fmt')!=pix_fmt  or a_info.get("sample_rate")!=audio_sample_rate
-    
-    if need_normalize: 
-        out_range=":out_range=tv" if v_info.get('pix_fmt')=='yuvj420p' else ""
-        cmd = f'ffmpeg -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx265 -r 60 -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
-        call_command_line(cmd)        
+    original_bit_rate = int(v_info.get('bit_rate'))//1000
+    logging.info(f"original bit rate={original_bit_rate}k")
 
+    output_dir= os.path.dirname(output_file)
+    passlogfile=os.path.join(output_dir, "ffmpeg_passlog")
+
+    try: 
+        if need_normalize: 
+            out_range=":out_range=tv" if v_info.get('pix_fmt')=='yuvj420p' else ""
+            #cmd = f'ffmpeg -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
+            cmd = f'ffmpeg -y -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 1 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k -f null /dev/null'
+            call_command_line(cmd) 
+            cmd = f'ffmpeg -y -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 2 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
+            call_command_line(cmd)        
+    finally: 
+        # Scan the current directory for the pattern and delete matches
+        for file_path in Path(output_dir).glob("ffmpeg_passlog*"):
+            file_path.unlink(missing_ok=True)
+                
 def normalize_video_pair(v1, v2, v1_out, v2_out):
     d1=extract_video_infor(v1)
     d2=extract_video_infor(v2)
@@ -186,15 +200,15 @@ if __name__ == "__main__":
 
     elif args.command =='normalize':
         file_dir, file_name=os.path.split(args.input_file)
-        output_file_path_name=os.path.join(file_dir, f"normalized_{file_name}") 
+        output_file_path_name=os.path.join(file_dir, f"norm_{file_name}") 
         normalize_video(args.input_file, output_file_path_name)
 
     elif args.command =='norm_pair':
         file_dir, file_name=os.path.split(args.left_file)
-        left_output_file_path_name=os.path.join(file_dir, f"normalized_{file_name}") 
+        left_output_file_path_name=os.path.join(file_dir, f"norm_{file_name}") 
 
         file_dir, file_name=os.path.split(args.right_file)
-        right_output_file_path_name=os.path.join(file_dir, f"normalized_{file_name}") 
+        right_output_file_path_name=os.path.join(file_dir, f"norm_{file_name}") 
         
         file_produced = normalize_video_pair(args.left_file,args.right_file, left_output_file_path_name, right_output_file_path_name)
 

@@ -253,7 +253,7 @@ class VideoComposer():
         return tmp_output_vid_file
     
     def process(self):
-        self.copy_source_to_workspace()
+        #self.copy_source_to_workspace()
         tmp_output_vid_file=self.cut_and_compose()
         shutil.copy(tmp_output_vid_file, self.output_video_file)
 
@@ -288,6 +288,7 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        workspace.remove_workspace()
+        pass
+        #workspace.remove_workspace()
 
 
