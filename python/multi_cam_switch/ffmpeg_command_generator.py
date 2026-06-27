@@ -1,7 +1,7 @@
 import os 
 from video.synchronizer import * 
 from video.ffmpeg_wrapper import * 
-from ffmpeg_cmd_string_gen import * 
+from multi_cam_switch.ffmpeg_cmd_string_gen import * 
 from itertools import chain
 import fnmatch
 def gen_hhmmss(side, offset, second): 

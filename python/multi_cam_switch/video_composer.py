@@ -253,7 +253,7 @@ class VideoComposer():
         return tmp_output_vid_file
     
     def process(self):
-        self.copy_source_to_workspace()
+        # self.copy_source_to_workspace()
         tmp_output_vid_file=self.cut_and_compose()
         shutil.copy(tmp_output_vid_file, self.output_video_file)
 
