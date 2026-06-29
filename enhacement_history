@@ -7,3 +7,9 @@
 3. Smooth function : do shift(-1) because it seems the switch is always a bit late. 
 
 4. refactor the video_composer code to be more modulized . 
+
+5. split preprocesser, clip_picker composer; No need worry about 'offset' anymore ; 
+
+6. support 'half seconds' ;  
+
+7. Much robust  smooth function now. 

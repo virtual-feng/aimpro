@@ -3,6 +3,7 @@ import sys
 import datetime
 import subprocess
 import pandas as pd
+import os 
 
 def setup_logger(log_level, log_file=None):
     logger=logging.getLogger()
@@ -13,7 +14,10 @@ def setup_logger(log_level, log_file=None):
     f=logging.Formatter('%(asctime)s\t%(name)s\t %(levelname)s\t%(module)s\t%(funcName)s\t%(message)s')
     
     h=logging.StreamHandler(sys.stdout)
-    if log_file: 
+    if log_file:
+        path, file_name=os.path.split(log_file)
+        if not os.path.exists(path):
+            os.makedirs(path) 
         h=logging.FileHandler(log_file, encoding='utf-8')
 
     h.setFormatter(f)
@@ -36,39 +40,6 @@ def call_command_line(cmd_line):
         logging.error(stderr)
     logging.info(f"end run : {cmd_line}")
     return stdout, stderr
-
-def smooth(s): 
-    s_clean=s.copy()
-    
-    #detect spike of length 1. 
-    for i in range(5):
-        spike_1 = (s_clean.shift(1) == s_clean.shift(-1)) & (s_clean != s_clean.shift(1))
-
-        if spike_1.astype(int).sum()==0: 
-            return s_clean
-
-        logging.info(f"smooth attemp: {i}")
-        s_clean=s_clean.where(~spike_1, s_clean.shift(1))
-
-        #detect the spike of length 2, 
-        spike_2_left = ((s_clean == s_clean.shift(-1)) & (s_clean != s_clean.shift(1))& (s_clean != s_clean.shift(-2)))
-        spike_2_right = ((s_clean == s_clean.shift(1)) & (s_clean != s_clean.shift(-1)) & (s_clean != s_clean.shift(2)))
-        
-        s_clean = s_clean.where(~spike_2_left, s_clean.shift(1))
-        s_clean = s_clean.where(~spike_2_right, s_clean.shift(1))
-
-        #looks like the switching always a bit late. 
-        #let me just do a shift, to see how it goes. 
-        s_clean=s_clean.shift(-1)
-
-        #make sure head and tail are NOT spike. 
-        if s_clean.size >3: 
-            s_clean.iloc[0]=s_clean.iloc[1]
-            s_clean.iloc[-1]=s_clean.iloc[-2]
-    return s_clean 
-            
-        
-
 
 if __name__ == "__main__":
     import argparse

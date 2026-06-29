@@ -4,6 +4,7 @@ from PIL import Image
 import supervision as sv
 import logging
 
+debug_model=True
 class ObjectDetector(): 
     #default_imgsz=1280
 
@@ -12,9 +13,17 @@ class ObjectDetector():
 
     def detect_objects_from_images(self, imge_files): 
         images=[Image.open(f) for f in imge_files]
+            
         # increase the image size doesn't seem to help to increase the accurycy. Good footage is still the key. 
         #result =self.model.predict(images, imgsz = ObjectDetector.default_imgsz, verbose=False)
         result =self.model.predict(images, verbose=False)
+        
+        if debug_model:
+            images=[ObjectDetector.annotate(image, res) for image, res in zip(images, result)]
+            for image, f in zip(images, imge_files):
+                logging.info(f"annotated image saved to {f}")
+                image.save(f)
+                
         return result 
     @staticmethod
     def analyze_result(res): 
@@ -25,6 +34,19 @@ class ObjectDetector():
         xyxys=[box.xyxy for box in res.boxes if box.cls in [0,3,4]]
         areas=[area(xyxy) for xyxy in xyxys]    
         return (classes==0).sum().item(), (classes==3).sum().item(), (classes==4).sum().item(), sum(areas)
+
+    @staticmethod
+    def analyze_result_advanced(res): 
+        
+        def area(xyxy): 
+            c=xyxy.numpy()[0]
+            return abs((c[2]-c[0]) * (c[3]-c[1]))
+        areas=[area(box.xyxy)*box.conf.item() for box in res.boxes if box.cls in [0,3,4]]
+        total_conf_0 = sum([box.conf.item() for box in res.boxes if box.cls ==0]) #ball
+        total_conf_3 = sum([box.conf.item() for box in res.boxes if box.cls ==3]) #player 
+        total_conf_4 = sum([box.conf.item() for box in res.boxes if box.cls ==4]) #player-in-possision. 
+        return total_conf_0, total_conf_3, total_conf_4, sum(areas)
+
 
     @staticmethod
     def annotate(image: Image.Image, result ) -> Image.Image:
@@ -41,6 +63,30 @@ class ObjectDetector():
         out = image.copy()
         out = box_annotator.annotate(out, detections)
         out = label_annotator.annotate(out, detections)
-        out.thumbnail((1000, 1000))
-        return out
+        #out.thumbnail((1000, 1000))
+        return out 
+    
+    @staticmethod
+    def annotate_image_file(image_file, result, output_file):
+        image=Image.open(image_file)
+        out=ObjectDetector.annotate(image, result)
+        out.save(output_file)
+        
+if __name__ == "__main__":
+    import argparse
+    from common_utils import setup_logger
+    setup_logger('INFO')
 
+    imgs = [
+        "/mnt/ramdisk/clip_picker.py/54185/frames_of_video_1/99-333.jpg",
+        "/mnt/ramdisk/clip_picker.py/54185/frames_of_video_1/98-500.jpg"
+    ]
+    od =ObjectDetector(f"/home/fnz/workspace/vid/model/yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt")
+    results = od.detect_objects_from_images(imgs)
+    for r in results:
+        print(r)
+        for b in r.boxes: 
+            print(b)
+            #print(analyze_result(r))
+        ra = ObjectDetector.analyze_result_advanced(r)
+        print(ra)

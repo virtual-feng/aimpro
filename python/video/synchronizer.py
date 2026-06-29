@@ -45,9 +45,9 @@ def find_offset_seconds(workspace_dir,v_a, v_b, sample_rate=16000):
 
         offset=peak/sample_rate
         if offset >0: 
-            meaning=f"video A started {offset} earlier than video B."
+            meaning=f"video A started {offset} earlier than video B ( or video started later than ref video)"
         else: 
-            meaning=f"video B started {offset*-1} earlier than video A."
+            meaning=f"video B started {offset*-1} earlier than video A (or video started earlier  than ref video)"
         #if offset >0, then A Start Earlier ; 
         #elif offset <0, then B Start Earlier. 
         return offset , meaning
