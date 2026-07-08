@@ -13,3 +13,8 @@
 6. support 'half seconds' ;  
 
 7. Much robust  smooth function now. 
+
+8. labelled 800+ images, and retrain model with 1280x720 pixel. 
+
+9. when deciding the active camera, consider which half has the ball - much better switch now. 
+

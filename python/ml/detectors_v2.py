@@ -3,28 +3,31 @@ from ultralytics import YOLO
 from PIL import Image
 import supervision as sv
 import logging
+from pathlib import Path
 
-debug_model=True
 class ObjectDetector(): 
     #default_imgsz=1280
 
     def __init__(self, model_file_path_name):
         self.model = YOLO(model_file_path_name)
 
-    def detect_objects_from_images(self, imge_files): 
+    def detect_objects_from_images(self, imge_files, debug_output_dir=None): 
         images=[Image.open(f) for f in imge_files]
             
         # increase the image size doesn't seem to help to increase the accurycy. Good footage is still the key. 
         #result =self.model.predict(images, imgsz = ObjectDetector.default_imgsz, verbose=False)
-        result =self.model.predict(images, verbose=False)
+        result =self.model.predict(images,   verbose=False) #might need tweak conf=0.25,  iou=0.45,
         
-        if debug_model:
+        if debug_output_dir:
             images=[ObjectDetector.annotate(image, res) for image, res in zip(images, result)]
             for image, f in zip(images, imge_files):
-                logging.info(f"annotated image saved to {f}")
-                image.save(f)
-                
-        return result 
+                file_name=Path(f).name
+                output_image_file_path_name=os.path.join(debug_output_dir, file_name)
+                logging.info(f"annotated image saved to {output_image_file_path_name}")
+                image.save(output_image_file_path_name)
+        return result
+    
+    
     @staticmethod
     def analyze_result(res): 
         classes=res.boxes.cls
@@ -34,18 +37,29 @@ class ObjectDetector():
         xyxys=[box.xyxy for box in res.boxes if box.cls in [0,3,4]]
         areas=[area(xyxy) for xyxy in xyxys]    
         return (classes==0).sum().item(), (classes==3).sum().item(), (classes==4).sum().item(), sum(areas)
-
+    
     @staticmethod
-    def analyze_result_advanced(res): 
-        
+    def identify_ball_and_players(res): 
+        classes=res.boxes.cls
         def area(xyxy): 
             c=xyxy.numpy()[0]
             return abs((c[2]-c[0]) * (c[3]-c[1]))
-        areas=[area(box.xyxy)*box.conf.item() for box in res.boxes if box.cls in [0,3,4]]
-        total_conf_0 = sum([box.conf.item() for box in res.boxes if box.cls ==0]) #ball
-        total_conf_3 = sum([box.conf.item() for box in res.boxes if box.cls ==3]) #player 
-        total_conf_4 = sum([box.conf.item() for box in res.boxes if box.cls ==4]) #player-in-possision. 
-        return total_conf_0, total_conf_3, total_conf_4, sum(areas)
+        xyxys=[box.xyxy for box in res.boxes if box.cls in [0,1]]
+        areas=[area(xyxy) for xyxy in xyxys]    
+        #return num of balls, num of players, and total object area. 
+        return  (classes==0).sum().item(),(classes==1).sum().item(),sum(areas)
+
+    # @staticmethod
+    # def analyze_result_advanced(res): 
+        
+    #     def area(xyxy): 
+    #         c=xyxy.numpy()[0]
+    #         return abs((c[2]-c[0]) * (c[3]-c[1]))
+    #     areas=[area(box.xyxy)*box.conf.item() for box in res.boxes if box.cls in [0,3,4]]
+    #     total_conf_0 = sum([box.conf.item() for box in res.boxes if box.cls ==0]) #ball
+    #     total_conf_3 = sum([box.conf.item() for box in res.boxes if box.cls ==3]) #player 
+    #     total_conf_4 = sum([box.conf.item() for box in res.boxes if box.cls ==4]) #player-in-possision. 
+    #     return total_conf_0, total_conf_3, total_conf_4, sum(areas)
 
 
     @staticmethod

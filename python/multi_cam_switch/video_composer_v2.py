@@ -3,7 +3,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import shutil
-from common_utils import call_command_line, smooth
+from common_utils import call_command_line
 from ml.detectors_v2 import ObjectDetector
 from video.synchronizer import * 
 from video.ffmpeg_wrapper import * 
@@ -11,8 +11,7 @@ import pandas as pd
 import fnmatch
 import logging
 from multi_cam_switch.workspace import Workspace
-from multi_cam_switch.ffmpeg_command_generator import * 
-
+from multi_cam_switch.ffmpeg_cmd_string_gen import * 
 script_name = Path(__file__).name
 installation_dir=Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
@@ -160,7 +159,7 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        #pass 
-        workspace.remove_workspace()
+        pass 
+        #workspace.remove_workspace()
 
 

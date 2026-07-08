@@ -85,11 +85,14 @@ def smooth_active_camera_index(ts, min_sequence_len=2): #2 means 1 second.
         smoothed_ac.extend([seg['val']] * seg['len'])
     return smoothed_ac
 
+debug=True
 class ClipPicker(): 
     def __init__(self, video_files,workspace):
         self.video_files=video_files
         self.workspace=workspace
-        model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
+        #model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-basketball-player-detection-model-small-test_v3_80_epochs.pt") 
+        #model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-nano-basketball-player-808-imgsz-1280-epochs-120.pt")
+        model_path=os.path.join(os.getenv("ml_model_dir"),"yolo26-nano-ball-player-imgsz-1280-epochs-120-bball-relabel.pt.pt")
         self.object_detector=ObjectDetector(model_path)
         logging.info(f"loaded ml model from  {model_path} ")
     
@@ -118,7 +121,11 @@ class ClipPicker():
             frames = list(fnmatch.filter(os.listdir(ith_video_frame_dir), f"*.{extract_img_fmt}") )    
             [rename_img_file_to_s_ms(fn) for fn in frames]
 
-    def detect_basketball_and_players(self): 
+    def detect_basketball_and_players(self):
+        debug_image_dir=None 
+        if debug: 
+            debug_image_dir=os.path.join(self.workspace.dir, "debug_images")
+            Path(debug_image_dir).mkdir(parents=True, exist_ok=True)
         def detect(camera_index, video_file, video_frame_dir, csv_file_path_name): 
             files=fnmatch.filter(os.listdir(video_frame_dir), f"*.{extract_img_fmt}")
             df=pd.DataFrame(data=files, columns=["file_name"])
@@ -128,13 +135,12 @@ class ClipPicker():
             def detect_chunk(gdf):
                 logging.info(f"object detection chunck : {gdf.name}")
                 files=[os.path.join(video_frame_dir,f) for f in gdf.file_name] 
-                results=self.object_detector.detect_objects_from_images(files)
-                raw_oput=[ObjectDetector.analyze_result(r) for r in results]
-                num_of_basketballs, num_of_players , num_of_possessions, total_object_area= zip (*raw_oput)
+                results=self.object_detector.detect_objects_from_images(files, debug_output_dir=debug_image_dir)
+                #raw_oput=[ObjectDetector.analyze_result(r) for r in results]
+                raw_oput=[ObjectDetector.identify_ball_and_players(r) for r in results]
+                num_of_basketballs, num_of_players, total_object_area= zip (*raw_oput)
                 gdf['has_baseketball']=num_of_basketballs
                 gdf['has_baseketball']=gdf.has_baseketball>0
-                gdf['has_possession']=num_of_possessions
-                gdf['has_possession']=gdf.has_possession>0
                 gdf['total_num_of_players']=num_of_players
                 gdf['total_object_area']=total_object_area
                 return gdf 
@@ -175,7 +181,7 @@ class ClipPicker():
             df['ms_rounded']=df.ms.apply(round_ms_to_half_second)
             has_baseketball=[c for c in df.columns if c.startswith('has_baseketball')][0]
             total_num_of_players=[c for c in df.columns if c.startswith('total_num_of_players')][0]
-            has_possession=[c for c in df.columns if c.startswith('has_possession')][0]
+            #has_possession=[c for c in df.columns if c.startswith('has_possession')][0]
             total_object_area=[c for c in df.columns if c.startswith('total_object_area')][0]
             video_file=[c for c in df.columns if c.startswith('video_file_')][0]
             file_name=[c for c in df.columns if c.startswith('file_name')][0]
@@ -183,7 +189,7 @@ class ClipPicker():
                 {   
                     has_baseketball:'any',
                     total_num_of_players:'sum' ,
-                    has_possession:'any', 
+                    #has_possession:'any', 
                     total_object_area:'sum' , 
                     video_file:'first',
                     file_name:'first'
@@ -201,6 +207,13 @@ class ClipPicker():
         mdf =pd.concat(dfs, axis=1)
         
         def active_camera_index(df): 
+            # cols = [c for c in df.columns if c.startswith('has_baseketball_') ]
+            # cols.sort(key=lambda x:x.split("_")[-1])
+            # logging.info(f"cols={cols}")
+            # h=df[cols].to_numpy()
+            # logging.info(f"p={p.shape}")
+
+            
             cols = [c for c in df.columns if c.startswith('total_num_of_players_') ]
             cols.sort(key=lambda x:x.split("_")[-1])
             logging.info(f"cols={cols}")
@@ -223,7 +236,38 @@ class ClipPicker():
 
             return pd.Series(np.argmax(masked_a, axis=1) )
         
-        mdf['raw_active_camera_index']=active_camera_index(mdf)
+        def active_camera_index_with_ball(df): 
+            cols = [c for c in df.columns if c.startswith('has_baseketball_') ]
+            cols.sort(key=lambda x:x.split("_")[-1])
+            h=df[cols].to_numpy()
+            
+            cols = [c for c in df.columns if c.startswith('total_num_of_players_') ]
+            cols.sort(key=lambda x:x.split("_")[-1])
+            p=df[cols].to_numpy()
+            
+            cols = [c for c in df.columns if c.startswith('total_object_area_') ]
+            cols.sort(key=lambda x:x.split("_")[-1])
+            a=df[cols].to_numpy()
+            
+            only_one_has_ball = (h.sum(axis=1) == 1)
+            r1_idx = np.argmax(h, axis=1)
+    
+            # Rule 2 & 3: Tie-breaking composite matrix
+            a_min = a.min(axis=1, keepdims=True)
+            a_max = a.max(axis=1, keepdims=True)
+            a_range = a_max - a_min
+            a_range[a_range == 0] = 1.0 
+            a_normalized = (a - a_min) / a_range * 0.999999
+            
+            # Combined score ensures A2 dominates, and A3 breaks ties
+            combined_score = p.astype(float) + a_normalized
+            r23_idx = np.argmax(combined_score, axis=1)
+            
+            # Vectorized conditional merging based on the exact single True rule
+            final_idx = np.where(only_one_has_ball, r1_idx, r23_idx)
+            return pd.Series(final_idx.flatten() )
+        
+        mdf['raw_active_camera_index']=active_camera_index_with_ball(mdf)
         mdf['active_camera_index']=smooth_active_camera_index(mdf.raw_active_camera_index, min_sequence_len=4) #at leat 2 seconds. 
         mdf.to_csv(os.path.join(self.workspace.dir, "merged_obj_dection_result.csv"), index=False )    
 
