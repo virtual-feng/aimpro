@@ -18,3 +18,6 @@
 
 9. when deciding the active camera, consider which half has the ball - much better switch now. 
 
+10. use p2 ; if both side has ball, chose the side with more players. 
+
+11. remove the bbal fale positive ; save prediction df to csv  and parquet. 

@@ -1,0 +1,5 @@
+1. how to detect basketball false positive. 
+i use yolo26n object detection model to detect basketball from  frames of basketball match video.   
+    The model detected false positives. One type of false positives is that some ball like object on a fixed location always be detected as basketball.  Given that the bound boxs of each false positves will almost stay at the same location, we should be able to easily identify them.  Can you please write me some code to detect this type of false positive, for example , do a bound box clustering analysis. if a cluster has signficant number of instances , then mark all instance in the cluster as false positive ?
+
+2. my frame is capture as 1280x720 resolution,   the yolo output bound box xyxy in pixels ? or normalized ?

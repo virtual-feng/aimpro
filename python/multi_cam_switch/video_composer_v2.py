@@ -100,7 +100,7 @@ class VideoComposer():
             logo_file_path_name=self.workspace.logo_file_path_name
         else: 
             logo_file_path_name=None 
-        mdf=pd.read_csv(os.path.join(self.workspace.dir, "merged_obj_dection_result.csv"))
+        mdf=pd.read_parquet(os.path.join(self.workspace.dir, "merged_obj_dection_result.parquet"))
         
         pip=self.pip and len(mdf.active_camera_index.unique())==2
         
@@ -159,7 +159,7 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        pass 
-        #workspace.remove_workspace()
+        #pass 
+        workspace.remove_workspace()
 
 

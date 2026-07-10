@@ -4,20 +4,21 @@ from PIL import Image
 import supervision as sv
 import logging
 from pathlib import Path
+from sklearn.cluster import DBSCAN
+import itertools
+import numpy as np
+
+
 
 class ObjectDetector(): 
-    #default_imgsz=1280
+    default_imgsz=1280
 
     def __init__(self, model_file_path_name):
         self.model = YOLO(model_file_path_name)
 
     def detect_objects_from_images(self, imge_files, debug_output_dir=None): 
         images=[Image.open(f) for f in imge_files]
-            
-        # increase the image size doesn't seem to help to increase the accurycy. Good footage is still the key. 
-        #result =self.model.predict(images, imgsz = ObjectDetector.default_imgsz, verbose=False)
-        result =self.model.predict(images,   verbose=False) #might need tweak conf=0.25,  iou=0.45,
-        
+        result =self.model.predict(images,   imgsz = ObjectDetector.default_imgsz, verbose=False) #might need tweak conf=0.25,  iou=0.45,
         if debug_output_dir:
             images=[ObjectDetector.annotate(image, res) for image, res in zip(images, result)]
             for image, f in zip(images, imge_files):
@@ -48,6 +49,35 @@ class ObjectDetector():
         areas=[area(xyxy) for xyxy in xyxys]    
         #return num of balls, num of players, and total object area. 
         return  (classes==0).sum().item(),(classes==1).sum().item(),sum(areas)
+    
+    @staticmethod
+    def identify_ball_and_players_v2(res): 
+        classes=res.boxes.cls
+        def area(xyxy): 
+            c=xyxy
+            return abs((c[2]-c[0]) * (c[3]-c[1]))
+        ball_bboxs =[box.xyxy.numpy()[0] for box in res.boxes if box.cls==0]
+        player_bboxes=[box.xyxy.numpy()[0] for box in res.boxes if box.cls==1]
+        areas=[area(xyxy) for xyxy in player_bboxes]    
+        #return num of balls, num of players, and total object area. 
+        return  (classes==1).sum().item(),sum(areas), ball_bboxs
+    
+    @staticmethod
+    def detect_and_remove_false_positive(bbox_series, eps_pixels=5, min_samples=15):
+        bboxes = list(itertools.chain.from_iterable(bbox_series))
+        logging.info(f"total {len(bboxes)} to be checked.")
+        X = np.array(bboxes)
+        db= DBSCAN(eps=eps_pixels,min_samples=min_samples).fit(X)
+        logging.info(f"clusters found: {db.labels_}")
+        for l in db.labels_: 
+            logging.info(f"numbers of elements in cluster {l} is {len(X[db.labels_==l])}")
+        
+        fpboxes=X[db.labels_==0]
+        ret=bbox_series.tolist()
+        def remove_false_positive(bboxes):
+            return [b for b in bboxes if not ((b == fpboxes).all(axis=1).any())]
+        return [ remove_false_positive(bbs) for bbs in ret]    
+
 
     # @staticmethod
     # def analyze_result_advanced(res): 

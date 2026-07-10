@@ -5,7 +5,7 @@ from pathlib import Path
 import os 
 from ml.detectors_v2 import ObjectDetector
 from video.synchronizer import find_offset_seconds, format_seconds_to_hhmmss
-from video.ffmpeg_wrapper import get_video_duration, extract_frames_from_video, normalize_video
+from video.ffmpeg_wrapper import get_video_duration, extract_frames_from_video, normalize_video,normalize_video_fast
 from multi_cam_switch.workspace import Workspace
 
 class VideoPreprocessor():
@@ -59,7 +59,7 @@ class VideoPreprocessor():
             output_file=self.gen_output_file_path_name(file)
             start_hhmmss= format_seconds_to_hhmmss(start_time) 
             end_hhmmss=format_seconds_to_hhmmss(end_time) 
-            normalize_video(file,output_file, start_hhmmss, end_hhmmss)
-
+            #normalize_video(file,output_file, start_hhmmss, end_hhmmss, fast=True)
+            normalize_video_fast(file,output_file, start_hhmmss, end_hhmmss)
 
     

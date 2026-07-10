@@ -41,6 +41,14 @@ def call_command_line(cmd_line):
     logging.info(f"end run : {cmd_line}")
     return stdout, stderr
 
+def save_df(df, csv_file): 
+    #automatically save a parquet file for easier read back. 
+    if csv_file.lower().endswith('.csv'): 
+        parquet_file=csv_file[:-4]+ ".parquet"
+        df.to_csv(csv_file, index=False)
+        df.to_parquet(parquet_file)
+        
+
 if __name__ == "__main__":
     import argparse
     setup_logger('INFO')

@@ -50,7 +50,7 @@ def extract_audio_sample_rate(vid_file):
     j=json.loads(stdout)
     return j.get('streams')[0]
 
-def normalize_video(vid_file,  output_file, start_hhmmss=None, end_hhmmss=None):
+def normalize_video(vid_file,  output_file, start_hhmmss=None, end_hhmmss=None, fast=True):
     width=1280
     height=720
     pix_fmt="yuv420p" 
@@ -58,7 +58,7 @@ def normalize_video(vid_file,  output_file, start_hhmmss=None, end_hhmmss=None):
     fps ="60/1"
     audio_sample_rate="48000"
 
-    v_info= extract_video_infor(vid_file)
+    v_info=extract_video_infor(vid_file)
     logging.info(v_info)
     a_info= extract_audio_sample_rate(vid_file)
     logging.info(v_info)
@@ -74,18 +74,39 @@ def normalize_video(vid_file,  output_file, start_hhmmss=None, end_hhmmss=None):
     else: 
         cut_clause="" 
     try: 
-        if need_normalize: 
+        if need_normalize:
             out_range=":out_range=tv" if v_info.get('pix_fmt')=='yuvj420p' else ""
-            #cmd = f'ffmpeg -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
-            cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 1 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k -f null /dev/null'
-            call_command_line(cmd) 
-            cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 2 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
-            call_command_line(cmd)        
+            if fast :
+                cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}"  -c:v libx264 -crf 23 -r {fps} -vsync cfr -c:a copy "{output_file}"'
+                call_command_line(cmd) 
+                
+            else: 
+                #cmd = f'ffmpeg -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
+                cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 1 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k -f null /dev/null'
+                call_command_line(cmd) 
+                cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}" -c:v libx264 -b:v {original_bit_rate}k -pass 2 -passlogfile "{passlogfile}" -r {fps} -vsync cfr -c:a aac -ar {audio_sample_rate} -b:a 192k "{output_file}"'
+                call_command_line(cmd)        
     finally: 
         # Scan the current directory for the pattern and delete matches
         for file_path in Path(output_dir).glob("ffmpeg_passlog*"):
             file_path.unlink(missing_ok=True)
-                
+
+def normalize_video_fast(vid_file,  output_file, start_hhmmss=None, end_hhmmss=None):
+    width=1280
+    height=720
+    pix_fmt="yuv420p" 
+    fps ="60/1"
+    
+    v_info=extract_video_infor(vid_file)
+    
+    if start_hhmmss and end_hhmmss: 
+        cut_clause=f" -ss {start_hhmmss} -to {end_hhmmss}"
+    else: 
+        cut_clause="" 
+    out_range=":out_range=tv" if v_info.get('pix_fmt')=='yuvj420p' else ""
+    cmd = f'ffmpeg -y {cut_clause} -i "{vid_file}" -vf "scale={width}:{height}{out_range},format={pix_fmt}"  -c:v libx264 -crf 23 -r {fps} -vsync cfr -c:a copy "{output_file}"'
+    call_command_line(cmd) 
+    
 
 import argparse
 def analyze_args():
