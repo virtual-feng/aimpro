@@ -31,6 +31,12 @@ class VideoComposer():
         def gen_cmd(start_row, end_row):
             start_row, end_row=start_row._asdict(), end_row._asdict()
             active_camera_index=start_row['active_camera_index']
+            
+            #if timeout or break, don't bother produce any command. 
+            if active_camera_index==-1: 
+                return None
+            
+
             start_hhmmss=format_seconds_to_hhmmss(start_row["ms_rounded"]/1000) 
             end_hhmmss=format_seconds_to_hhmmss(end_row["ms_rounded"]/1000)
             main_video_file_name=start_row[f"video_file_{active_camera_index}"]
@@ -71,7 +77,7 @@ class VideoComposer():
 
         if start_r and last_r: 
             cmds.append(gen_cmd(start_r,last_r))       
-        return cmds 
+        return [ c for c in cmds if c is not None]
 
     @staticmethod
     def post_process_extract_cmds(extract_cmds, workspace_dir): 

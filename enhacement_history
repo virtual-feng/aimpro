@@ -21,3 +21,8 @@
 10. use p2 ; if both side has ball, chose the side with more players. 
 
 11. remove the bbal fale positive ; save prediction df to csv  and parquet. 
+
+12. extract frame fps=4, reduced from 6 , to save time; 
+
+13. detect and skip timeout. 
+-

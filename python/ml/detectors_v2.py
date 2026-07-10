@@ -68,7 +68,7 @@ class ObjectDetector():
         logging.info(f"total {len(bboxes)} to be checked.")
         X = np.array(bboxes)
         db= DBSCAN(eps=eps_pixels,min_samples=min_samples).fit(X)
-        logging.info(f"clusters found: {db.labels_}")
+        logging.info(f"clusters found: {set(db.labels_)}")
         for l in db.labels_: 
             logging.info(f"numbers of elements in cluster {l} is {len(X[db.labels_==l])}")
         

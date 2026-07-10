@@ -11,9 +11,9 @@ import numpy as np
 import glob
 from common_utils import save_df
 
-extract_fps=6
+extract_fps=4
 extract_img_fmt="jpg"
-detection_chunk_size=60
+detection_chunk_size=64
 
 
 def smooth_active_camera_index(ts, min_sequence_len=2): #2 means 1 second. 
@@ -277,13 +277,13 @@ class ClipPicker():
             return pd.Series(final_idx.flatten() )
         
         def active_camera_index_with_ball_v2(df): 
-            cols = [c for c in df.columns if c.startswith('has_baseketball_') ]
-            cols.sort(key=lambda x:x.split("_")[-1])
-            h=df[cols].to_numpy()
-            
             cols = [c for c in df.columns if c.startswith('total_num_of_players_') ]
             cols.sort(key=lambda x:x.split("_")[-1])
             p=df[cols].to_numpy()
+
+            ols = [c for c in df.columns if c.startswith('has_baseketball_') ]
+            cols.sort(key=lambda x:x.split("_")[-1])
+            h=df[cols].to_numpy()
             
             cols = [c for c in df.columns if c.startswith('total_object_area_') ]
             cols.sort(key=lambda x:x.split("_")[-1])
@@ -319,12 +319,27 @@ class ClipPicker():
             # Tier 3: Zero Trues -> Use global argmax of combined_score
             if np.any(mask_zero):
                 final_idx[mask_zero] = np.argmax(combined_score[mask_zero], axis=1)
+
+            #finally filter out timeout/break.
+            no_player_mask=p<extract_fps/2 
+            num_of_cameras_seeing_no_player=no_player_mask.sum(axis=1)
+            total_num_of_cameras=p.shape[1]
+            final_idx[num_of_cameras_seeing_no_player==total_num_of_cameras]=-1
             return pd.Series(final_idx.flatten() )
         
 
         mdf['raw_active_camera_index']=active_camera_index_with_ball_v2(mdf)
-        mdf['active_camera_index']=smooth_active_camera_index(mdf.raw_active_camera_index, min_sequence_len=4) #at leat 2 seconds. 
+        
+        #test timeout or quater break;
+        # condition=True
+        # cols = [c for c in df.columns if c.startswith('total_num_of_players_') ]
+        # for c in cols: 
+        #     #extract 2 frames/half second.  if all courts have less than 2 players , we believe it is timeout or break.
+        #     condition=condition & (mdf[c]<extract_fps/2) 
+        # mdf.loc[condition, 'raw_active_camera_index']=-1
 
+        mdf['active_camera_index']=smooth_active_camera_index(mdf.raw_active_camera_index, min_sequence_len=4) #at leat 2 seconds. 
+        
         # Keeps the first 'file_name' column and removes the rest
         mdf = mdf.loc[:, ~mdf.columns.duplicated()]
         save_df(mdf, os.path.join(self.workspace.dir, "merged_obj_dection_result.csv"))
