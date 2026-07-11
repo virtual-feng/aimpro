@@ -48,20 +48,22 @@ class VideoComposer():
                 duration = (end_row["ms_rounded"]-start_row["ms_rounded"])/1000.0
             
                 if logo_file_path_name: 
-                    return cut_watermark_pip_encode_cmd( 
+                    cmd= cut_watermark_pip_encode_cmd( 
                             main_video_file_name, start_hhmmss, duration, 
                             pip_video_file_name, pip_start_hhmmss,
                             logo_file_path_name,
                             "part_to_be_replaced", output_fps=output_fps)
                 else: 
-                    return  cut_pip_encode_cmd( main_video_file_name, start_hhmmss, duration, 
+                    cmd=  cut_pip_encode_cmd( main_video_file_name, start_hhmmss, duration, 
                             pip_video_file_name, pip_start_hhmmss,
                             "part_to_be_replaced", output_fps=output_fps)
             else: 
                 if logo_file_path_name: 
-                    return cut_watermark_encode_cmd(main_video_file_name, logo_file_path_name, start_hhmmss, end_hhmmss, "part_to_be_replaced", output_fps=output_fps)
+                    cmd=cut_watermark_encode_cmd(main_video_file_name, logo_file_path_name, start_hhmmss, end_hhmmss, "part_to_be_replaced", output_fps=output_fps)
                 else: 
-                    return cut_encode_cmd(main_video_file_name, start_hhmmss, end_hhmmss, "part_to_be_replaced", output_fps=output_fps)
+                    cmd= cut_encode_cmd(main_video_file_name, start_hhmmss, end_hhmmss, "part_to_be_replaced", output_fps=output_fps)
+            logging.info(f"{cmd}")
+            return cmd 
         start_r, last_r=None, None  
         cmds=[]
         for r in mdf.itertuples():
@@ -108,7 +110,8 @@ class VideoComposer():
             logo_file_path_name=None 
         mdf=pd.read_parquet(os.path.join(self.workspace.dir, "merged_obj_dection_result.parquet"))
         
-        pip=self.pip and len(mdf.active_camera_index.unique())==2
+        effective_active_camera_indexes= [i for i in mdf.active_camera_index.unique() if i>=0]
+        pip=self.pip and len(effective_active_camera_indexes)==2
         
         cmds = VideoComposer.gen_cmds_from_ac_df(mdf, 
                                    output_fps=video_fps, 
