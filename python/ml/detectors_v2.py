@@ -8,17 +8,25 @@ from sklearn.cluster import DBSCAN
 import itertools
 import numpy as np
 
+import torch 
+
 
 
 class ObjectDetector(): 
     default_imgsz=1280
 
     def __init__(self, model_file_path_name):
+
         self.model = YOLO(model_file_path_name)
 
     def detect_objects_from_images(self, imge_files, debug_output_dir=None): 
         images=[Image.open(f) for f in imge_files]
-        result =self.model.predict(images,   imgsz = ObjectDetector.default_imgsz, verbose=False) #might need tweak conf=0.25,  iou=0.45,
+
+        if torch.backends.mps.is_available(): 
+            result =self.model.predict(images,  device='mps',imgsz = ObjectDetector.default_imgsz, verbose=False) #might need tweak conf=0.25,  iou=0.45,
+        else: 
+            result =self.model.predict(images,imgsz = ObjectDetector.default_imgsz, verbose=False) #might need tweak conf=0.25,  iou=0.45,
+        
         if debug_output_dir:
             images=[ObjectDetector.annotate(image, res) for image, res in zip(images, result)]
             for image, f in zip(images, imge_files):
@@ -33,7 +41,7 @@ class ObjectDetector():
     def analyze_result(res): 
         classes=res.boxes.cls
         def area(xyxy): 
-            c=xyxy.numpy()[0]
+            c=xyxy.cpu().numpy()[0]
             return abs((c[2]-c[0]) * (c[3]-c[1]))
         xyxys=[box.xyxy for box in res.boxes if box.cls in [0,3,4]]
         areas=[area(xyxy) for xyxy in xyxys]    
@@ -43,7 +51,7 @@ class ObjectDetector():
     def identify_ball_and_players(res): 
         classes=res.boxes.cls
         def area(xyxy): 
-            c=xyxy.numpy()[0]
+            c=xyxy.cpu().numpy()[0]
             return abs((c[2]-c[0]) * (c[3]-c[1]))
         xyxys=[box.xyxy for box in res.boxes if box.cls in [0,1]]
         areas=[area(xyxy) for xyxy in xyxys]    
@@ -56,8 +64,8 @@ class ObjectDetector():
         def area(xyxy): 
             c=xyxy
             return abs((c[2]-c[0]) * (c[3]-c[1]))
-        ball_bboxs =[box.xyxy.numpy()[0] for box in res.boxes if box.cls==0]
-        player_bboxes=[box.xyxy.numpy()[0] for box in res.boxes if box.cls==1]
+        ball_bboxs =[box.xyxy.cpu().numpy()[0] for box in res.boxes if box.cls==0]
+        player_bboxes=[box.xyxy.cpu().numpy()[0] for box in res.boxes if box.cls==1]
         areas=[area(xyxy) for xyxy in player_bboxes]    
         #return num of balls, num of players, and total object area. 
         return  (classes==1).sum().item(),sum(areas), ball_bboxs
@@ -83,7 +91,7 @@ class ObjectDetector():
     # def analyze_result_advanced(res): 
         
     #     def area(xyxy): 
-    #         c=xyxy.numpy()[0]
+    #         c=xyxy.cpu().numpy()[0]
     #         return abs((c[2]-c[0]) * (c[3]-c[1]))
     #     areas=[area(box.xyxy)*box.conf.item() for box in res.boxes if box.cls in [0,3,4]]
     #     total_conf_0 = sum([box.conf.item() for box in res.boxes if box.cls ==0]) #ball

@@ -24,8 +24,11 @@ def find_offset_seconds(workspace_dir,v_a, v_b, sample_rate=16000):
     video_a_name, video_b_name=os.path.split(v_a)[-1], os.path.split(v_b)[-1]
     audio_a_temp_file=os.path.join(workspace_dir, f"{video_a_name}.mp3")
     audio_b_temp_file=os.path.join(workspace_dir, f"{video_b_name}.mp3")
-    extract_audio(v_a, audio_a_temp_file)
-    extract_audio(v_b, audio_b_temp_file)
+    mp3_file=extract_audio(v_a, audio_a_temp_file)
+    logging.info(f"temp file created {mp3_file}")
+    mp3_file=extract_audio(v_b, audio_b_temp_file)
+    logging.info(f"temp file created {mp3_file}")
+    
     
     try: 
         audio_a, _ =librosa.load(audio_a_temp_file, sr=sample_rate, mono=True)

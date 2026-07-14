@@ -14,6 +14,7 @@ from multi_cam_switch.workspace import Workspace
 from multi_cam_switch.ffmpeg_cmd_string_gen import * 
 script_name = Path(__file__).name
 installation_dir=Path(__file__).resolve().parent.parent.parent
+
 load_dotenv(dotenv_path=os.path.join(installation_dir,'.env'))
 
 video_fps=60
@@ -136,11 +137,18 @@ def analyze_args():
     parser.add_argument('-w', '--watermark', choices=['Y', 'N'], default="Y")
     return parser.parse_args()
     
+def display_duration(start,message): 
+    end_time=datetime.now()
+    delta = (end_time-start_time).total_seconds()
+    delta_in_minutes, reminding_seconds = int(delta//60), int(delta%60) 
+    print(f"it took {delta_in_minutes} minutes and {reminding_seconds} seconds to {message}.")
+
 if __name__ == "__main__":
     from common_utils import setup_logger
     from datetime import datetime
     from multi_cam_switch.clip_picker import ClipPicker
     from multi_cam_switch.video_preprocessor import VideoPreprocessor
+
     import glob 
     log_dir=os.getenv('log_dir')
     setup_logger('INFO', log_file=os.path.join(log_dir, f"{script_name}.log"))
@@ -153,22 +161,28 @@ if __name__ == "__main__":
             output_file=os.path.join(args.root_folder, output_file)
         
         start_time=datetime.now()
-        VideoPreprocessor(video_files, workspace).process()
+        process_start_time=start_time
 
+        VideoPreprocessor(video_files, workspace).process()
+        display_duration(start_time,"preprocess videos")
+
+
+        start_time=datetime.now()
         video_files= glob.glob(f"{workspace.dir}/procesed_*", recursive=False)
         ClipPicker(video_files, workspace ).process()
+        display_duration(start_time,"select footage")
 
+
+        start_time=datetime.now()
         VideoComposer(workspace,output_file, args.pip.upper()=='Y', args.watermark.upper()=='Y').process()
+        display_duration(start_time,"compose the final video.") 
 
-        end_time=datetime.now()
-        delta = (end_time-start_time).total_seconds()
-        delta_in_minutes, reminding_seconds = int(delta//60), int(delta%60) 
-        print(f"it took {delta_in_minutes} minutes and {reminding_seconds} seconds to process videos. ")
-
+        display_duration(process_start_time,"run full pipeline.") 
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        #pass 
-        workspace.remove_workspace()
+        pass 
+
+        #workspace.remove_workspace()
 
 

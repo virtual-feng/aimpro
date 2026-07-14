@@ -38,6 +38,7 @@ def extract_video_infor(vid_file):
     cmd=f"ffprobe -v error -select_streams v:0 -show_entries stream=duration,bit_rate,avg_frame_rate,r_frame_rate,codec_name,pix_fmt,width,height -of json {vid_file}"
     stdout, stderr= call_command_line(cmd)
     if stderr:
+        logging.error(f"{stderr}")
         return None 
     j=json.loads(stdout)
     return j.get('streams')[0]
