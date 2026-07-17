@@ -2,10 +2,15 @@ import os
 from pathlib import Path
 import shutil
 import logging
-
+import re
 
 installation_dir=Path(__file__).resolve().parent.parent.parent
 resource_dir=os.path.join(installation_dir, 'resources')
+
+
+
+def is_valid_pid(pid_str):
+    return bool(re.match(r"^[1-9][0-9]{0,7}$", pid_str))
 
 class Workspace(): 
     def __init__(self, app_name):
@@ -13,7 +18,9 @@ class Workspace():
         appdir=os.path.join(os.getenv('tmp_dir'), app_name) 
         Path(appdir).mkdir(parents=True,exist_ok=True)
         previous_pids = os.listdir(appdir)
-        if len(previous_pids)>0: 
+        previous_pids = [p for p in previous_pids if is_valid_pid(p)]
+        
+        if len(previous_pids)>0:
             last_pid=previous_pids[0]
             logging.info(f"resume the last job {last_pid}")
             self.dir=os.path.join(appdir, f"{last_pid}")    

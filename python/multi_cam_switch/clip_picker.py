@@ -11,7 +11,7 @@ import numpy as np
 import glob
 from common_utils import save_df
 
-extract_fps=4
+extract_fps=6
 extract_img_fmt="jpg"
 detection_chunk_size=64
 
@@ -214,7 +214,7 @@ class ClipPicker():
             logging.info(f"aggregated df={df.shape}")
             dfs.append(df)
         mdf =pd.concat(dfs, axis=1)
-        
+
         def active_camera_index(df): 
             # cols = [c for c in df.columns if c.startswith('has_baseketball_') ]
             # cols.sort(key=lambda x:x.split("_")[-1])
@@ -342,6 +342,10 @@ class ClipPicker():
         
         # Keeps the first 'file_name' column and removes the rest
         mdf = mdf.loc[:, ~mdf.columns.duplicated()]
+        
+        #because we merge dfs with 'concat', not 'merge' or join. 
+        #the left side and right might not have same shape. 
+        mdf = mdf.loc[mdf.ms_rounded.notnull()]
         save_df(mdf, os.path.join(self.workspace.dir, "merged_obj_dection_result.csv"))
         
 

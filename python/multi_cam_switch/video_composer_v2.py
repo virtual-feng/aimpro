@@ -131,7 +131,7 @@ import argparse
 def analyze_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--root_folder", type=str,   help="the root dir of all video files, optional.")
-    parser.add_argument("-i", "--input_files", nargs="+" , type=str,   help="video files from 2 or more camerasl. If root_folder specified, we assume all video files are under the same root folder.")
+    parser.add_argument("-i", "--input_files", nargs="+" , type=str,   help="video files from 2 or more cameras. If root_folder specified, we assume all video files are under the same root folder.")
     parser.add_argument("-o", "--output_file", type=str,   help="the output file name. If root_folder specified , the output file will be under the root folder.")
     parser.add_argument('-p', '--pip', choices=['Y', 'N'], default="Y")
     parser.add_argument('-w', '--watermark', choices=['Y', 'N'], default="Y")
@@ -160,9 +160,9 @@ if __name__ == "__main__":
             video_files=[os.path.join(args.root_folder, v) for v in video_files]
             output_file=os.path.join(args.root_folder, output_file)
         
-        start_time=datetime.now()
-        process_start_time=start_time
+        process_start_time=datetime.now()
 
+        start_time=datetime.now()
         VideoPreprocessor(video_files, workspace).process()
         display_duration(start_time,"preprocess videos")
 
@@ -181,8 +181,7 @@ if __name__ == "__main__":
 
         # fix the iphone ffmpeg -i iphone.mp4 -vcodec libx264 -crf 18 -r 30 -pix_fmt yuv420p fixed_iphone.mp4
     finally:
-        pass 
-
-        #workspace.remove_workspace()
-
+        #pass 
+        workspace.remove_workspace()
+        #to drop off audio : ffmpeg -i q1.MP4 -an -c:v copy q1_na.mp4
 
